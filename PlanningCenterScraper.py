@@ -1,18 +1,19 @@
 import urllib.request
-import socket
-import time
 import json
 import base64
 import re
 from typing import Final
 
-APPID: Final = f'bfc324a997dcfacd43549bb68609ce4516b0e63f0bd9f0c815199b556aa7ed65'
-SECRET: Final = f'1776c42102df0950a89fba7fb55d06fb539d4ea8c431ca7920bc8c3476c686c5'
+APPID: Final = f''
+SECRET: Final = f''
 url_future_plans = f'https://api.planningcenteronline.com/services/v2/service_types/619990/plans?order=sort_date&filter=future'
 team_members = f'https://api.planningcenteronline.com/services/v2/service_types/619990/plans/'
+team_positions = f'https://api.planningcenteronline.com/services/v2/service_types/619990/team_positions'
+video_team_id = "5556557"
 credentials = ('%s:%s' % (APPID, SECRET))
 encoded_credentials = base64.b64encode(credentials.encode('ascii'))
 
+#--------------------------------------------------------------------------------------------------
 def GetSchedule(schedule, time = ''):
     schedule_time_1 = None
     schedule_time_2 = None
@@ -22,34 +23,35 @@ def GetSchedule(schedule, time = ''):
             if time != '*':
                 schedule_time_1 = f'{schedule} #{time}'
             else:
-                schedule_time_1 = f'{schedule} #{2}'
-                schedule_time_2 = f'{schedule} #{3}'
+                schedule_time_1 = f'{schedule} #{1}'
+                schedule_time_2 = f'{schedule} #{2}'
         else:
             schedule_time_1 = f'{schedule}'
     elif 'wednesday' in schedule.lower():
-        schedule_time_1 = 'WEDNESDAY'
+        schedule_time_1 = 'Wednesday'
     elif 'communion' in schedule.lower():
         if time != "":
             if time != '*':
                 schedule_time_1 = f'{schedule} #{time}'
             else:
-                schedule_time_1 = f'COMMUNION SERVICE #{2}'
-                schedule_time_2 = f'COMMUNION {3} Russian'
+                schedule_time_1 = f'Communion #{1}'
+                schedule_time_2 = f'Communion #{2}'
         else:
             schedule_time_1 = f'{schedule}'
 
-    service_plans_list = extract_plans_for_service([schedule_time_1, schedule_time_2])
+    service_plans_list = ExtractPlansForService([schedule_time_1, schedule_time_2])
     if len(service_plans_list)> 0:
         final_schedule_list = []
         for service_plan_list in service_plans_list:
             if service_plans_list != None:
-                final_schedule_list.append(getTeam(service_plan_list))
+                final_schedule_list.append(GetTeam(service_plan_list))
         print(repr(final_schedule_list))
         return final_schedule_list
     else:
         return
 
-def extract_plans_for_service(schedule_time_list = []) :
+#--------------------------------------------------------------------------------------------------
+def ExtractPlansForService(schedule_time_list = []) :
     plan_id = ''
     service_info = {'id':'', 'date':'', 'time':''}
     services_list = []
@@ -61,14 +63,14 @@ def extract_plans_for_service(schedule_time_list = []) :
             if schedule_time != None:
                 print(f'GETTING SCHEDULE FOR: {schedule_time}')
                 with urllib.request.urlopen(req) as response:
-                    ResponseData = json.loads(response.read())['data']
-                    for service in ResponseData:
+                    response_data = json.loads(response.read())['data']
+                    for service in response_data:
                         plan = service['attributes']
                         if plan['series_title'] == schedule_time:
                             new_plan =  service_info.copy()
                             new_plan['id'] = str(service['id'])
                             new_plan['date'] = plan['short_dates']
-                            new_plan['time'] = extract_time_from_string(plan['sort_date'])
+                            new_plan['time'] = ExtractTimeFromString(plan['sort_date'])
                             services_list.append((new_plan))
                             break
             else:
@@ -76,7 +78,8 @@ def extract_plans_for_service(schedule_time_list = []) :
         return services_list
     return
 
-def extract_time_from_string(input_string):
+#--------------------------------------------------------------------------------------------------
+def ExtractTimeFromString(input_string):
     pattern = r'T(\d{2}:\d{2}):\d{2}Z'
     match = re.search(pattern, input_string)
     if match:
@@ -89,22 +92,74 @@ def extract_time_from_string(input_string):
     else:
         return None
 
-def getTeam(service_plan):
+#--------------------------------------------------------------------------------------------------
+def GetTeam(service_plan):
     if service_plan != None:
         plan_id = service_plan['id']
-        camera_dict = {'date':service_plan['date'], 'time':service_plan['time'], 'Cam 1':'', 'Cam 2':'','Cam 3':'', 'Cam 4':'', 'Cam 5':'', 'Mixer':'', 'Live':''}
+        position_dict = {'date':service_plan['date'], 'time':service_plan['time']}
+        possible_positions = GetAllPossibleVideoPositions()
+        position_dict.update({pos: "" for pos in possible_positions})
         req = urllib.request.Request(f'{team_members}{plan_id}/team_members')
         req.add_header('Authorization', 'Basic %s' %encoded_credentials.decode("ascii"))
         with urllib.request.urlopen(req) as response:
-            ResponseData = json.loads(response.read())['data']
-            for persons in ResponseData:
+            response_data = json.loads(response.read())['data']
+            for persons in response_data:
                 person = persons['attributes']
                 if person['status'] == 'C':
-                    if person['team_position_name'] in camera_dict.keys():
-                        camera_dict[person['team_position_name']] = person['name']
-        return camera_dict
+                    if person['team_position_name'] in possible_positions:
+                        position_dict[person['team_position_name']] = person['name']
+        return position_dict
     else:
         return
 
+#--------------------------------------------------------------------------------------------------
+def GetAllPossibleVideoPositions():
+    possible_positions = []
+    req = urllib.request.Request(f'{team_positions}')
+    req.add_header('Authorization', 'Basic %s' %encoded_credentials.decode("ascii"))
+    with urllib.request.urlopen(req) as response:
+        response_data = json.loads(response.read())['data']
+        for pos in response_data:
+            team_id = pos.get("relationships", {}).get("team", {}).get("data", {}).get("id")
+            if team_id == video_team_id:
+                if "director" not in pos['attributes']['name'].lower():
+                    possible_positions.append(pos['attributes']['name'])
+    return possible_positions
 
+#--------------------------------------------------------------------------------------------------
+def GetNextDayServices() :
+    plan_date = ""
+    service_info = {'id':'', 'date':'', 'time':''}
+    services_list = []
+    req = urllib.request.Request(url_future_plans)
+    req.add_header('Authorization', 'Basic %s' %encoded_credentials.decode("ascii"))
+    with urllib.request.urlopen(req) as response:
+        response_data = json.loads(response.read())['data']
+        for service in response_data:
+            plan = service['attributes']
+            new_plan =  service_info.copy()
+            new_plan['id'] = str(service['id'])
+            new_plan['date'] = plan['short_dates']
+            new_plan['time'] = ExtractTimeFromString(plan['sort_date'])
+            if len(services_list) == 0:
+                plan_date = new_plan['date']
+            #only adding the services from the same date as the next date of the first service, it can be 1 or 3
+            #but once the dates dont match we now got all we need
+            if plan_date == new_plan['date']:
+                services_list.append((new_plan))
+            else:
+                break
+    return services_list
+
+#--------------------------------------------------------------------------------------------------
+def GetNextSchedule():
+    service_plans_list = GetNextDayServices()
+    if len(service_plans_list)> 0:
+        final_schedule_list = []
+        for service_plan_list in service_plans_list:
+            if service_plans_list != None:
+                final_schedule_list.append(GetTeam(service_plan_list))
+        return final_schedule_list
+    else:
+        return
 
