@@ -3,8 +3,9 @@ from telegram import Update
 from telegram.ext import  Application, CommandHandler, MessageHandler, filters, ContextTypes
 import PlanningCenterScraper
 
-TOKEN: Final = '7099674012:AAFQb1Hc4TdeUPxYHM6iDiuJCzSg_bgiGN8'
-BOT_USERNAME: Final = '@lsc_test_bot'
+TOKEN: Final = ''
+BOT_USERNAME: Final = ''
+
 
 #commands
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -23,32 +24,34 @@ def handle_response(text: str) -> str:
     service_string_1 = ''
     service_string_2 = ''
     sunday = "SUNDAY SERVICE"
-    #schedules
-    print(text)
     if 'schedule' in text:
-        print(text)
-        if 'sunday' or 'communion' in text.lower():
+        #asking for specific upcoming service
+        if 'sunday' in text.lower() or 'communion' in text.lower():
             if 'communion' in text.lower():
-                sunday = "COMMUNION SERVICE"
+                sunday = "Communion"
             print(sunday)
-            if '2' in text.lower():
+            if '1' in text.lower():
+                service_string_1 = f'{sunday} #1'
+                schedule_string = format_schedule(PlanningCenterScraper.GetSchedule(sunday, '1'),
+                [service_string_1, service_string_2])
+            elif '2' in text.lower():
                 service_string_1 = f'{sunday} #2'
                 schedule_string = format_schedule(PlanningCenterScraper.GetSchedule(sunday, '2'),
                 [service_string_1, service_string_2])
-            elif '3' in text.lower():
-                service_string_1 = f'{sunday} #3'
-                schedule_string = format_schedule(PlanningCenterScraper.GetSchedule(sunday, '3'),
-                [service_string_1, service_string_2])
             elif '*' in text.lower():
-                service_string_1 = f'{sunday} #2'
-                service_string_2 = f'{sunday} #3'
+                service_string_1 = f'{sunday} #1'
+                service_string_2 = f'{sunday} #2'
                 schedule_string = format_schedule(PlanningCenterScraper.GetSchedule(sunday, '*'),
                 [service_string_1, service_string_2])
         elif 'wednesday' in text.lower():
+            print("in wednesday")
             service_string_1 = 'WEDNESDAY SCHEDULE'
             schedule_string = format_schedule(PlanningCenterScraper.GetSchedule('WEDNESDAY SERVICE'),
             [service_string_1, service_string_2])
-
+        #will look at date and grab the schedule for the most upcoming day with service
+        elif 'next schedule' in text.lower():
+            upcoming_schedule_list = PlanningCenterScraper.GetNextSchedule()
+            schedule_string = format_schedule(upcoming_schedule_list)
         if schedule_string != '':
             return f'{schedule_string}'
         else:
@@ -57,7 +60,7 @@ def handle_response(text: str) -> str:
     else:
         return "I DO NOT UNDERSTAND"
 
-def format_schedule(schedule_list, service_names):
+def format_schedule(schedule_list, service_names = None):
     schedule_string = ''
     index = -1
     for schedule in schedule_list:
@@ -67,9 +70,14 @@ def format_schedule(schedule_list, service_names):
                 schedule_string += "could not find service"
             else:
                 if index > 0:
-                    service_title = "\n\n" + str(service_names[index]) + "\n"
+                    service_title = "\n" + "\n"
+                    if service_names != None:
+                        service_title = "\n" + str(service_names[index]) + "\n"
+
                 else:
-                    service_title = schedule['date']  + "\n\n" +  str(service_names[index]) + "\n"
+                    service_title = schedule['date']  + "\n"  + "\n"
+                    if service_names != None:
+                        service_title = schedule['date']  + "\n" +  str(service_names[index]) + "\n"
 
                 schedule_string += service_title  + schedule['time'] + "\n\n"
                 for position, person in schedule.items():
@@ -104,6 +112,7 @@ if __name__ == '__main__':
     #PlanningCenterScraper.GetSchedule('SUNDAY SERVICE', '*')
     #PlanningCenterScraper.GetSchedule('wednesday SCHEDULE')
     #PlanningCenterScraper.GetSchedule('COMMUNION SERVICE', '*')
+    #PlanningCenterScraper.GetNextSchedule()
     app = Application.builder().token(TOKEN).build()
 
     #commands
