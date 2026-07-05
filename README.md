@@ -12,10 +12,26 @@ Telegram bot for the LSC video team. It reads service plans from Planning Center
 
 ## Requirements
 
-- Python 3.10+
+- Python 3.10 or newer
 - A Telegram bot token
 - Planning Center API credentials
-- `python-telegram-bot` with job queue support
+
+## Python Libraries
+
+Install this third-party library:
+
+- `python-telegram-bot[job-queue]`
+
+The rest of the imports are included with Python 3.10:
+
+- `base64`
+- `datetime`
+- `json`
+- `os`
+- `re`
+- `typing`
+- `urllib`
+- `zoneinfo`
 
 Install dependencies:
 
