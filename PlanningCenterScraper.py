@@ -1,17 +1,29 @@
 import urllib.request
 import json
 import base64
+import os
 import re
+from datetime import date
 from typing import Final
 
-APPID: Final = f''
-SECRET: Final = f''
+APPID: Final = os.environ.get('PLANNING_CENTER_APP_ID', '')
+SECRET: Final = os.environ.get('PLANNING_CENTER_SECRET', '')
 url_future_plans = f'https://api.planningcenteronline.com/services/v2/service_types/619990/plans?order=sort_date&filter=future'
 team_members = f'https://api.planningcenteronline.com/services/v2/service_types/619990/plans/'
-team_positions = f'https://api.planningcenteronline.com/services/v2/service_types/619990/team_positions'
+team_people = f'https://api.planningcenteronline.com/services/v2/teams/5556557/people'
+#team_positions = f'https://api.planningcenteronline.com/services/v2/service_types/619990/team_positions'
+team_positions = f'https://api.planningcenteronline.com/services/v2/teams/5556557?include=team_positions'
 video_team_id = "5556557"
 credentials = ('%s:%s' % (APPID, SECRET))
 encoded_credentials = base64.b64encode(credentials.encode('ascii'))
+
+#--------------------------------------------------------------------------------------------------
+def GetApiJson(url):
+    req = urllib.request.Request(url)
+    req.add_header('Authorization', 'Basic %s' %encoded_credentials.decode("ascii"))
+    with urllib.request.urlopen(req) as response:
+        return json.loads(response.read())
+
 
 #--------------------------------------------------------------------------------------------------
 def GetSchedule(schedule, time = ''):
@@ -114,16 +126,15 @@ def GetTeam(service_plan):
 
 #--------------------------------------------------------------------------------------------------
 def GetAllPossibleVideoPositions():
+    exclude_positions = ["director", "cam 7"]
     possible_positions = []
     req = urllib.request.Request(f'{team_positions}')
     req.add_header('Authorization', 'Basic %s' %encoded_credentials.decode("ascii"))
     with urllib.request.urlopen(req) as response:
-        response_data = json.loads(response.read())['data']
+        response_data = json.loads(response.read())['included']
         for pos in response_data:
-            team_id = pos.get("relationships", {}).get("team", {}).get("data", {}).get("id")
-            if team_id == video_team_id:
-                if "director" not in pos['attributes']['name'].lower():
-                    possible_positions.append(pos['attributes']['name'])
+            if all(position not in pos['attributes']['name'].lower() for position in exclude_positions):
+                possible_positions.append(pos['attributes']['name'])
     return possible_positions
 
 #--------------------------------------------------------------------------------------------------
@@ -163,3 +174,49 @@ def GetNextSchedule():
     else:
         return
 
+#--------------------------------------------------------------------------------------------------
+def GetTeamPeople():
+    people = []
+    next_offset = None
+
+    while True:
+        url = team_people
+        if next_offset != None:
+            url = f'{team_people}?offset={next_offset}'
+
+        response_data = GetApiJson(url)
+
+        for person in response_data['data']:
+            attributes = person['attributes']
+            people.append({
+                'full_name': attributes['full_name'],
+                'birthdate': attributes['birthdate']
+            })
+
+        next_page = response_data.get('meta', {}).get('next')
+        if next_page == None:
+            break
+
+        next_offset = next_page.get('offset')
+        if next_offset == None:
+            break
+
+    return people
+
+#--------------------------------------------------------------------------------------------------
+def GetTodaysBirthdays(today = None):
+    if today == None:
+        today = date.today()
+
+    todays_month_day = today.strftime('%m-%d')
+    birthdays = []
+
+    for person in GetTeamPeople():
+        birthdate = person['birthdate']
+        if birthdate == None:
+            continue
+
+        if birthdate[5:] == todays_month_day:
+            birthdays.append(person['full_name'])
+
+    return birthdays
